@@ -43,57 +43,75 @@ Intercepts `git push` commands, executes pre/post hooks from participating skill
 
 ## Architecture
 
-### Current Implementation: Hermes Plugin (FIXED ✅)
-The plugin in `~/.hermes/plugins/git_push_telemetry/` **loads correctly** and registers a `tool_execution` middleware that intercepts `git push` commands **when executed through the Hermes `terminal` tool** (i.e., from within a Hermes session/chat/TUI).
+### Current Implementation: Hermes Plugin with Hooks (FIXED ✅)
+The plugin in `~/.hermes/plugins/git_push_telemetry/` **loads correctly** and registers `pre_tool_call` / `post_tool_call` hooks that intercept `git push` commands **when executed through the Hermes `terminal` tool** (i.e., from within a Hermes session/chat/TUI).
 
 **How it works:**
 1. Plugin loads at Hermes startup (enabled in `config.yaml` under `plugins.enabled`)
-2. Plugin's `register(ctx)` registers `telemetry_middleware` for `tool_execution` events
-3. When Hermes terminal tool invokes a command containing `git push`, middleware intercepts
-4. Runs pre-push hooks via `eval_hooks.py` (subprocess calls to skill commands)
-5. Calls `next_call(args)` to execute the actual `git push` via terminal tool
-6. Runs post-push hooks, captures repo state, generates markdown report
-7. Emits OTLP/JSONL telemetry to `~/.hermes/logs/git-push-telemetry.jsonl`
+2. Plugin's `register(ctx)` registers `git_push_pre_tool_call` for `pre_tool_call` and `git_push_post_tool_call` for `post_tool_call`
+3. When Hermes terminal tool invokes a command containing `git push`, `pre_tool_call` hook intercepts
+4. Runs pre-push hooks via `eval_hooks.py` (subprocess calls to skill commands), stores state in `_pending_pushes`
+5. If hooks fail and `fail_on_hook_failure: true`, returns block directive (fail-closed)
+6. Hermes executes the actual `git push` via terminal tool
+7. `post_tool_call` hook runs: retrieves pending state, runs post-push hooks, captures repo state, generates markdown report
+8. Emits JSONL telemetry to `~/.hermes/logs/git-push-telemetry.jsonl`
 
 **It does NOT work as a standalone `.git/hooks/pre-push`** because:
-- Git hooks receive refspecs via stdin and `remote url` as argv — middleware expects Hermes tool context
+- Git hooks receive refspecs via stdin and `remote url` as argv — hooks expect Hermes tool context
 - No `next_call` function exists in raw git hook execution
-- Middleware uses `threading` + `asyncio` which assumes Hermes runtime environment
+- Hooks use `threading` + `asyncio` which assumes Hermes runtime environment
 
-### Previous Bug (Fixed)
-The plugin had incorrect internal imports (`git_push_telemetry.scripts.*`) assuming a package structure that didn't exist. Fixed by changing to relative imports (`from telemetry import ...`, etc.).
+### Fixed: Architecture — Middleware → Hooks
+**Previous:** `tool_execution` middleware. **Problem:** Only intercepts agent-loop tool calls; TUI, CLI `hermes chat -q`, and `execute_code(terminal=...)` bypass middleware.
+
+**Fixed:** Migrated to `pre_tool_call` / `post_tool_call` hooks. These fire on **every** tool execution regardless of entry point (TUI, CLI, API, cron, agent loop).
+
+```python
+# In git_push_hooks.py
+def pre_tool_call(**ctx):
+    if ctx.get('tool_name') != 'terminal':
+        return
+    cmd = ctx.get('args', {}).get('command', '')
+    if 'git push' not in cmd:
+        return
+    # run pre-push hooks
+
+def post_tool_call(**ctx):
+    if ctx.get('tool_name') != 'terminal':
+        return
+    cmd = ctx.get('args', {}).get('command', '')
+    if 'git push' not in cmd:
+        return
+    # run post-push hooks, generate report
+```
 
 ## Installation
 
-### As Hermes Plugin (Current — Works Inside Hermes Sessions)
-No manual installation needed. The plugin is enabled in `config.yaml`:
+### As Independent Repo (Recommended — Portable, Complete)
+The skill + plugin is published as a standalone repo that can be cloned directly:
+```bash
+# Clone to Hermes plugins directory (includes skill docs + plugin implementation)
+git clone https://github.com/VectorSigma-Ops/git-push-telemetry.git ~/.hermes/plugins/git_push_telemetry
+
+# Enable in config.yaml:
+plugins:
+  enabled:
+    - git_push_telemetry
+
+# Restart Hermes gateway:
+systemctl --user restart hermes-gateway
+```
+
+**This repo contains BOTH the skill documentation (for `hermes skill install`) AND the complete plugin implementation (scripts/, templates/, references/).** It works independently of the Hermes repo.
+
+### As Hermes Plugin (Alternative — Inside Hermes Sessions Only)
+If you only need it within Hermes sessions and have the skill in-repo:
 ```yaml
 plugins:
   enabled:
     - git_push_telemetry
 ```
 It activates automatically for any `terminal` tool call containing `git push` within a Hermes session.
-
-## Configuration
-Edit `plugin.yaml`:
-```yaml
-config_schema:
-  enabled: true
-  otlp_endpoint: "http://localhost:4318/v1/traces"
-  jsonl_log_path: "~/.hermes/logs/git-push-telemetry.jsonl"
-  hooks_timeout_seconds: 300
-  fail_on_hook_failure: true
-  hook_mapping:
-    sast-quality-gates:
-      pre_push: [pre_push_security, pre_push_full_gate]
-      post_push: [post_gate_fail]
-    project-standards-skill-project-standards:
-      pre_push: [validate-branch, validate-commit, validate-all-fix-auto]
-      post_push: [validate_lockfile]
-    requirements-manager-skill:
-      pre_push: [ensure_dependencies]
-      post_push: [validate_lockfile]
-```
 
 ## Hook Mapping
 | Skill | Phase | Hooks |
@@ -104,6 +122,18 @@ config_schema:
 | project-standards-skill-project-standards | post_push | validate_lockfile |
 | requirements-manager-skill | pre_push | ensure_dependencies |
 | requirements-manager-skill | post_push | validate_lockfile |
+| capability-optimizer | pre_push | daily_analysis, code_review |
+| capability-optimizer | post_push | daily_improvement |
+| rate-limiter-skill-rate-limiter | pre_push | check_limits |
+| rate-limiter-skill-rate-limiter | post_push | auto_improve |
+| paid-model-guard | pre_push | check_models |
+| paid-model-guard | post_push | audit_catalog |
+| quota-monitor | pre_push | check_quotas |
+| quota-monitor | post_push | alert |
+| observability | pre_push | check_health |
+| observability | post_push | emit_metrics |
+
+**Total: 8 skills, 18 hooks.** The full `hook_mapping` is in `plugin.yaml` `config_schema.hook_mapping.default` so it works out-of-the-box.
 
 ## Telemetry Output
 
@@ -144,19 +174,21 @@ terminal(command="git push origin main")
 
 ## Upstream Push Workflow (NousResearch/hermes-agent)
 The upstream repo requires write access. Standard workflow:
-1. Fork to your GitHub account (e.g., `VectorSigma-Ops/hermes-agent`)
+1. Fork to your GitHub account (e.g., `VectorSigma-Ops/hermes-agent`) via `gh repo fork`
 2. Add fork as remote: `git remote add fork git@github.com:VectorSigma-Ops/hermes-agent.git`
-3. Push to fork: `git push fork HEAD:feature-branch`
+3. Push to fork with explicit refspec: `git push fork HEAD:feature-branch` or `git push fork branch:main`
 4. Open PR via GitHub UI or `gh pr create`
 
-**The middleware will intercept step 3 ONLY if run via Hermes terminal tool.** Direct shell `git push` bypasses it entirely.
+**Critical:** `git push fork HEAD` is rejected — use explicit `git push fork <branch>:<target>` refspec.
+
+**The hooks will intercept step 3 ONLY if run via Hermes terminal tool.** Direct shell `git push` bypasses them entirely.
 
 ## Known Issues / Pitfalls
 
-### Middleware Is Not a Git Hook
-- Copying `git_push_middleware.py` to `.git/hooks/pre-push` **does not work**
+### Hooks Are Not Git Hooks
+- Copying hook files to `.git/hooks/pre-push` **does not work**
 - Git hooks have a different interface (stdin refspecs, argv remote/url)
-- Middleware requires Hermes tool context (`next_call`, `tool_name`, `args`)
+- Hooks require Hermes tool context (`task_id`, `session_id`, `tool_call_id`)
 - Telemetry logs only show pushes made through Hermes terminal tool
 
 ### Hook Failures
@@ -166,13 +198,51 @@ The upstream repo requires write access. Standard workflow:
 
 > **Fix**: Ensure skills are installed in the execution environment, or adjust `hook_mapping` to only include available skills.
 
+### Fixed: OTLP Conflict
+**OpenTelemetry tracer provider conflict with Langfuse** ("Overriding of current TracerProvider is not allowed"). Fixed by disabling OTLP entirely — telemetry now JSONL-only (deterministic, no external deps).
+
 ### Fixed: Internal Import Bug
 The plugin originally had incorrect imports (`git_push_telemetry.scripts.*`) assuming a package structure. Fixed in `git_push_report.py` to use relative imports (`from telemetry import ...`, etc.).
 
-### Telemetry Dependencies
-- Requires `opentelemetry` Python packages for OTLP export
-- Falls back gracefully if not installed (JSONL still works)
-- OTLP endpoint default: `http://localhost:4318/v1/traces`
+### Fixed: Module Shadowing When Running External Skill Hooks
+**Problem**: When `eval_hooks.py` runs project-standards hooks from a repo that has its own `scripts/` directory (e.g., the git-push-telemetry repo itself), Python imports the local `scripts/` package instead of the project-standards skill's `scripts/`.
+
+**Fix**: Run the hook from the skill directory with explicit PYTHONPATH:
+```python
+# In resolve_hook_command for project-standards-skill-project-standards:
+skill_path = get_skill_path(skill)  # /home/hermes/.hermes/skills/infrastructure/project-standards-skill-project-standards
+cwd = skill_path  # Run from skill dir, not repo dir
+cmd = [hermes_python, "-m", "scripts.cli", "branch", "--target-path", str(repo_path)]
+```
+And in `run_hook`:
+```python
+if skill == "project-standards-skill-project-standards" and skill_path:
+    cwd = skill_path  # Override repo_path for this skill
+```
+
+**General Pattern for External Skill Hooks** (applies to ANY skill invoked via git-push-telemetry):
+```python
+# 1. Find the skill directory
+skill_path = get_skill_path(skill)
+
+# 2. Build command using python -m <skill_module>.<entry_point>
+#    This avoids 'hermes <command>' which requires skill to be loaded in Hermes
+
+# 3. Set execution context
+env = os.environ.copy()
+env["PYTHONPATH"] = f"{skill_path}:{env.get('PYTHONPATH', '')}"
+cwd = skill_path  # Critical: run FROM skill dir to avoid module shadowing
+
+# 4. Execute
+subprocess.run(cmd, cwd=cwd, env=env, ...)
+```
+
+**Why this works**: The `python -m scripts.cli` runs the module relative to `cwd`. When `cwd` is the skill directory, `scripts.cli` resolves to the skill's CLI module, not the repo's local `scripts/` package. The `PYTHONPATH` ensures any skill-internal imports also resolve correctly.
+
+### Telemetry
+- JSONL-only (deterministic, no external deps)
+- OTLP endpoint config retained for compatibility but unused
+- Output: `~/.hermes/logs/git-push-telemetry.jsonl`
 
 ## File Structure
 ```
@@ -196,7 +266,7 @@ The plugin originally had incorrect imports (`git_push_telemetry.scripts.*`) ass
 
 ## Testing
 ```bash
-# Test via Hermes terminal tool (only way middleware activates)
+# Test via Hermes terminal tool (hooks activate)
 # In a Hermes session:
 > terminal(command="cd /path/to/repo && git push origin main")
 
@@ -210,8 +280,30 @@ cat ~/.hermes/cache/scratch/git-push-report-<run_id>.md
 # git push origin main  # no telemetry, no hooks, no report
 ```
 
+## Independent Repo Structure
+```
+git-push-telemetry/  (VectorSigma-Ops/git-push-telemetry)
+├── SKILL.md                    # Skill documentation
+├── plugin.yaml                 # Manifest with full hook_mapping defaults
+├── README.md                   # Installation instructions
+├── .gitignore
+├── scripts/                    # All implementation modules
+│   ├── __init__.py
+│   ├── eval_hooks.py
+│   ├── git_push_hooks.py       # pre_tool_call / post_tool_call hooks
+│   ├── git_push_middleware.py  # Legacy reference
+│   ├── git_push_report.py
+│   ├── repo_state.py
+│   └── telemetry.py
+├── templates/
+│   └── report.md.template
+├── references/
+│   └── hook-evaluation.md
+└── test_hooks_direct.py
+```
+
 ## Migration Checklist (Plugin Working ✅)
 - [x] Plugin loads in `hermes plugins list`
-- [x] `git push` from Hermes chat intercepted via middleware
-- [x] Telemetry and reports generated
-- [ ] Test with all configured skills (sast-quality-gates, project-standards, requirements-manager)
+- [x] `git push` from Hermes chat intercepted via hooks
+- [x] Telemetry and reports generated (JSONL-only)
+- [ ] Test with all configured skills (sast-quality-gates, project-standards, requirements-manager, capability-optimizer, rate-limiter, paid-model-guard, debian-server-maintenance, quota-monitor, mem0-router, memory-system-validation, hermes-model-setup, observability, blockchain, security)
