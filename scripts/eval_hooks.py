@@ -79,13 +79,13 @@ def resolve_hook_command(skill: str, hook: str, repo_path: Path, is_tag_push: bo
             return None
         
         if hook == "validate-branch":
-            return ["hermes", "standards", "validate-branch"]
+            return ["hermes", "standards", "branch"]
         elif hook == "validate-commit":
-            return ["hermes", "standards", "validate-commit"]
+            return ["hermes", "standards", "commit"]
         elif hook == "validate-all-fix-auto":
             return ["hermes", "standards", "validate", "--fix-auto", "--format", "text"]
         elif hook == "validate_lockfile":
-            return ["hermes", "standards", "validate", "--only", "observability", "--format", "json"]
+            return ["hermes", "standards", "validate", "--only", "requirements", "--format", "json"]
     
     elif skill == "requirements-manager-skill":
         skill_path = get_skill_path(skill)
