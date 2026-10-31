@@ -1,35 +1,34 @@
 """Middleware for intercepting git push commands in Hermes."""
 
-import os
-import sys
-import json
 import asyncio
 import logging
+import os
 import re
+import sys
 import threading
-import traceback
 import time
-from typing import Dict, Any, Optional
+import traceback
 from pathlib import Path
+from typing import Any
 
-from telemetry import TelemetryEmitter, TelemetryConfig
-from eval_hooks import evaluate_hooks, HookResult
-from repo_state import get_repo_state, format_repo_state
+from eval_hooks import HookResult, evaluate_hooks
 from git_push_report import generate_report
+from repo_state import get_repo_state
+from telemetry import TelemetryConfig, TelemetryEmitter
 
 logger = logging.getLogger(__name__)
 
-_config: Dict[str, Any] = {}
-_shared_telemetry: Dict[str, TelemetryEmitter] = {}
+_config: dict[str, Any] = {}
+_shared_telemetry: dict[str, TelemetryEmitter] = {}
 
 
-def set_config(config: Dict[str, Any]) -> None:
+def set_config(config: dict[str, Any]) -> None:
     global _config
     _config = config
     print(f"[CONFIG] set_config called with keys: {list(config.keys())}", file=sys.stderr, flush=True)
 
 
-def get_config() -> Dict[str, Any]:
+def get_config() -> dict[str, Any]:
     return _config
 
 
@@ -44,8 +43,7 @@ def get_or_create_telemetry(run_id: str) -> TelemetryEmitter:
 
 
 def clear_telemetry(run_id: str) -> None:
-    if run_id in _shared_telemetry:
-        del _shared_telemetry[run_id]
+    _shared_telemetry.pop(run_id, None)
 
 
 class GitPushMiddleware:
@@ -60,7 +58,7 @@ class GitPushMiddleware:
     def _is_git_push(self, command: str) -> bool:
         return "git push" in command
 
-    def _extract_repo_path(self, command: str, cwd: str) -> Optional[Path]:
+    def _extract_repo_path(self, command: str, cwd: str) -> Path | None:
         cd_match = re.search(r'cd\s+([^\s&]+)\s*&&', command)
         if cd_match:
             path = cd_match.group(1)
@@ -75,7 +73,7 @@ class GitPushMiddleware:
         
         return Path(".").resolve()
 
-    def _parse_push_command(self, command: str, repo_path: Path) -> Dict[str, Any]:
+    def _parse_push_command(self, command: str, repo_path: Path) -> dict[str, Any]:
         parts = command.strip().split()
         push_idx = -1
         for i, part in enumerate(parts):
@@ -124,7 +122,7 @@ class GitPushMiddleware:
             hooks.extend(mapping.get("post_push", []))
         return hooks
 
-    async def _run_pre_hooks(self, repo_path: Path, push_context: Dict[str, Any]):
+    async def _run_pre_hooks(self, repo_path: Path, push_context: dict[str, Any]):
         with self.telemetry.span("pre_hooks", {
             "git.push.hooks_planned": len(self._get_all_pre_hooks()),
         }) as span:
@@ -148,7 +146,7 @@ class GitPushMiddleware:
             
             return hook_results, False
 
-    async def _run_post_hooks(self, repo_path: Path, push_context: Dict[str, Any]):
+    async def _run_post_hooks(self, repo_path: Path, push_context: dict[str, Any]):
         with self.telemetry.span("post_hooks", {
             "git.push.post_hooks.planned": len(self._get_all_post_hooks()),
         }) as span:
@@ -165,7 +163,7 @@ class GitPushMiddleware:
 
 def telemetry_middleware(**ctx):
     config = get_config()
-    print(f"[MIDDLEWARE] tool_execution invoked", file=sys.stderr, flush=True)
+    print("[MIDDLEWARE] tool_execution invoked", file=sys.stderr, flush=True)
     
     if not config.get("enabled", True):
         next_fn = ctx.get("next_call")
@@ -236,7 +234,7 @@ def telemetry_middleware(**ctx):
     pre_thread.join(timeout=config.get("hooks_timeout_seconds", 300))
     
     if pre_thread.is_alive():
-        print(f"[MIDDLEWARE] Pre-hooks timed out!", file=sys.stderr, flush=True)
+        print("[MIDDLEWARE] Pre-hooks timed out!", file=sys.stderr, flush=True)
         hook_results_pre = {"timeout": [HookResult("timeout", "timeout", "FAIL", 0, -1, "", "Pre-hooks timeout", {}, "Pre-hooks timed out")]}
         block_push = True
     
@@ -294,7 +292,7 @@ def telemetry_middleware(**ctx):
         "duration_ms": tool_result.get("duration_ms", 0) if tool_result else 0,
     }
     
-    print(f"[MIDDLEWARE] Generating final report...", file=sys.stderr, flush=True)
+    print("[MIDDLEWARE] Generating final report...", file=sys.stderr, flush=True)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -312,7 +310,7 @@ def telemetry_middleware(**ctx):
     return tool_result
 
 
-def parse_push_command(command: str, repo_path: Path) -> Dict[str, Any]:
+def parse_push_command(command: str, repo_path: Path) -> dict[str, Any]:
     parts = command.strip().split()
     push_idx = -1
     for i, part in enumerate(parts):

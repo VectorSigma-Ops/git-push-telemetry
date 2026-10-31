@@ -1,19 +1,18 @@
 """Report generator for git-push-telemetry: produces standardized markdown report."""
 
 import os
-import json
 import sys
 import traceback
-from typing import Dict, Any, Optional
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from telemetry import TelemetryEmitter
-from eval_hooks import HookResult, format_hook_results
+from eval_hooks import format_hook_results
 from repo_state import RepoState, format_repo_state
+from telemetry import TelemetryEmitter
 
 
-def render_template(template_path: Path, data: Dict[str, Any]) -> str:
+def render_template(template_path: Path, data: dict[str, Any]) -> str:
     """Simple template rendering with {{key}} substitution."""
     template = template_path.read_text()
     for key, value in data.items():
@@ -40,7 +39,7 @@ def truncate(text: str, max_len: int = 500) -> str:
     return text[:max_len] + "... [truncated]"
 
 
-def _convert_hook_results(hook_results: Dict[str, list]) -> Dict[str, list]:
+def _convert_hook_results(hook_results: dict[str, list]) -> dict[str, list]:
     """Convert serialized hook results back to HookResult-like objects."""
     converted = {}
     for skill, results in hook_results.items():
@@ -66,13 +65,13 @@ def _convert_hook_results(hook_results: Dict[str, list]) -> Dict[str, list]:
 
 async def generate_report(
     telemetry: TelemetryEmitter,
-    hook_results_pre: Dict[str, list],
-    hook_results_post: Dict[str, list],
+    hook_results_pre: dict[str, list],
+    hook_results_post: dict[str, list],
     repo_path: Path,
-    push_context: Dict[str, Any],
-    push_result: Optional[Dict[str, Any]] = None,
-    repo_state: Optional[RepoState] = None,
-    config: Optional[Dict[str, Any]] = None
+    push_context: dict[str, Any],
+    push_result: dict[str, Any] | None = None,
+    repo_state: RepoState | None = None,
+    config: dict[str, Any] | None = None
 ):
     """Generate and emit the markdown report."""
     print(f"[REPORT] generate_report called, run_id={telemetry.get_run_id()}", file=sys.stderr, flush=True)
@@ -184,7 +183,7 @@ async def generate_report(
         
         # Print to chat (stdout for Hermes)
         print(report)
-        print(f"[REPORT] Report printed to stdout", file=sys.stderr, flush=True)
+        print("[REPORT] Report printed to stdout", file=sys.stderr, flush=True)
         
         # Also save to scratch for reference
         scratch_path = Path(os.environ.get("HERMES_SCRATCH", "/home/hermes/.hermes/cache/scratch")) / f"git-push-report-{telemetry.get_run_id()}.md"
@@ -196,19 +195,18 @@ async def generate_report(
         print(f"[REPORT] ERROR: {e}", file=sys.stderr, flush=True)
         traceback.print_exc(file=sys.stderr)
     
-    return None
 
 
-def _fallback_report(data: Dict[str, Any]) -> str:
+def _fallback_report(data: dict[str, Any]) -> str:
     lines = []
-    lines.append(f"## 📋 Git Push Telemetry Report")
+    lines.append("## 📋 Git Push Telemetry Report")
     lines.append(f"**Run ID:** {data['run_id']} | **Timestamp:** {data['timestamp']} | **Duration:** {data['total_duration']}s")
     lines.append("")
     lines.append("---")
     lines.append("")
     lines.append("### 🎯 Push Context")
-    lines.append(f"| Field | Value |")
-    lines.append(f"|-------|-------|")
+    lines.append("| Field | Value |")
+    lines.append("|-------|-------|")
     lines.append(f"| Repository | {data['repo_path']} |")
     lines.append(f"| Local Branch | {data['branch_local']} |")
     lines.append(f"| Remote Branch | {data['branch_remote']} |")
@@ -219,8 +217,8 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("")
     lines.append("### 🔍 Pre-Push Hook Evaluation")
-    lines.append(f"| Skill | Hook | Status | Duration | Exit Code | Findings | Details |")
-    lines.append(f"|-------|------|--------|----------|-----------|----------|---------|")
+    lines.append("| Skill | Hook | Status | Duration | Exit Code | Findings | Details |")
+    lines.append("|-------|------|--------|----------|-----------|----------|---------|")
     
     for hook in data.get("pre_hooks", []):
         lines.append(f"| {hook['skill']} | {hook['hook']} | {hook['status_icon']} {hook['status']} | {hook['duration']}s | {hook['exit_code']} | {hook['findings']} | {hook['details']} |")
@@ -230,8 +228,8 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("")
     lines.append("### 🚀 Push Execution")
-    lines.append(f"| Field | Value |")
-    lines.append(f"|-------|-------|")
+    lines.append("| Field | Value |")
+    lines.append("|-------|-------|")
     lines.append(f"| Command | {data['push_command']} |")
     lines.append(f"| Exit Code | {data['push_exit_code']} |")
     lines.append(f"| Duration | {data['push_duration']}s |")
@@ -242,8 +240,8 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("")
     lines.append("### 📦 Post-Push Hook Evaluation")
-    lines.append(f"| Skill | Hook | Status | Duration | Exit Code | Details |")
-    lines.append(f"|-------|------|--------|----------|-----------|---------|")
+    lines.append("| Skill | Hook | Status | Duration | Exit Code | Details |")
+    lines.append("|-------|------|--------|----------|-----------|---------|")
     
     for hook in data.get("post_hooks", []):
         lines.append(f"| {hook['skill']} | {hook['hook']} | {hook['status_icon']} {hook['status']} | {hook['duration']}s | {hook['exit_code']} | {hook['details']} |")
@@ -253,8 +251,8 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("")
     lines.append("### 🌳 Repository State Snapshot (Post-Push)")
-    lines.append(f"| Field | Value |")
-    lines.append(f"|-------|-------|")
+    lines.append("| Field | Value |")
+    lines.append("|-------|-------|")
     lines.append(f"| Current Branch | {data.get('state_current_branch', 'unknown')} |")
     lines.append(f"| Branches (local) | {data.get('state_branches_local', '(none)')} |")
     lines.append(f"| Branches (remote) | {data.get('state_branches_remote', '(none)')} |")
@@ -268,8 +266,8 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("")
     lines.append("### 📊 Telemetry Summary")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|-------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|-------|-------|")
     lines.append(f"| Total Duration | {data['total_duration']}s |")
     lines.append(f"| Pre-Hooks Duration | {data.get('pre_duration', '0')}s ({data.get('pre_pct', '0')}%) |")
     lines.append(f"| Push Duration | {data['push_duration']}s ({data.get('push_pct', '0')}%) |")
@@ -281,7 +279,7 @@ def _fallback_report(data: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append(f"### 🏁 Final Verdict")
+    lines.append("### 🏁 Final Verdict")
     lines.append(f"**{data['final_verdict']}**")
     lines.append("")
     lines.append("---")

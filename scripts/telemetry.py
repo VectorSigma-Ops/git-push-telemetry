@@ -7,7 +7,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 OTEL_AVAILABLE = False
 
@@ -15,7 +15,7 @@ OTEL_AVAILABLE = False
 @dataclass
 class TelemetryConfig:
     otlp_endpoint: str = "http://localhost:4318/v1/traces"
-    otlp_headers: Dict[str, str] = field(default_factory=dict)
+    otlp_headers: dict[str, str] = field(default_factory=dict)
     jsonl_log_path: str = "~/.hermes/logs/git-push-telemetry.jsonl"
     service_name: str = "git-push-telemetry"
     service_version: str = "1.0.0"
@@ -28,7 +28,7 @@ class TelemetryEmitter:
         self.config = config
         self.run_id = str(uuid.uuid4())[:12]
         self.start_time = time.time()
-        self._span_stack: List[Any] = []
+        self._span_stack: list[Any] = []
         self._jsonl_path = os.path.expanduser(config.jsonl_log_path)
         os.makedirs(os.path.dirname(self._jsonl_path), exist_ok=True)
         
@@ -38,7 +38,7 @@ class TelemetryEmitter:
         
         self.tracer = None
 
-    def _emit_jsonl(self, event: str, data: Dict[str, Any]):
+    def _emit_jsonl(self, event: str, data: dict[str, Any]):
         """Emit deterministic JSON Lines event to stderr and file."""
         entry = {
             "timestamp": time.time(),
@@ -53,7 +53,7 @@ class TelemetryEmitter:
             f.write(line + "\n")
     
     @contextmanager
-    def span(self, name: str, attributes: Dict[str, Any] = None, kind=None):
+    def span(self, name: str, attributes: dict[str, Any] = None, kind=None):
         """Context manager for JSON Lines start/end events (OTLP disabled)."""
         span_id = str(uuid.uuid4())[:8]
         start = time.time()
@@ -67,7 +67,7 @@ class TelemetryEmitter:
         try:
             yield None
             status = "OK"
-        except Exception as e:
+        except Exception:
             status = "ERROR"
             raise
         finally:
@@ -77,7 +77,7 @@ class TelemetryEmitter:
             # JSON Lines end event
             self._emit_jsonl(f"git_push_telemetry.{name}.end", end_attrs)
     
-    def event(self, name: str, data: Dict[str, Any]):
+    def event(self, name: str, data: dict[str, Any]):
         """Emit a standalone JSON Lines event (no span)."""
         data["run_id"] = self.run_id
         self._emit_jsonl(f"git_push_telemetry.{name}", data)
@@ -89,7 +89,7 @@ class TelemetryEmitter:
         return round((time.time() - self.start_time) * 1000, 2)
 
 
-def create_emitter(config_dict: Dict[str, Any] = None) -> TelemetryEmitter:
+def create_emitter(config_dict: dict[str, Any] = None) -> TelemetryEmitter:
     """Factory function for creating emitter from config dict."""
     config = TelemetryConfig(**(config_dict or {}))
     return TelemetryEmitter(config)

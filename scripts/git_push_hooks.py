@@ -4,39 +4,38 @@ Replaces the middleware approach with pre_tool_call / post_tool_call hooks
 that work everywhere (TUI, CLI, API, cron).
 """
 
-import os
-import sys
-import json
 import asyncio
+import json
 import logging
+import os
 import re
 import threading
-import traceback
 import time
-from typing import Dict, Any, Optional
+import traceback
 from pathlib import Path
+from typing import Any
 
-from telemetry import TelemetryEmitter, TelemetryConfig
-from eval_hooks import evaluate_hooks, HookResult
-from repo_state import get_repo_state, format_repo_state
+from eval_hooks import HookResult, evaluate_hooks
 from git_push_report import generate_report
+from repo_state import get_repo_state
+from telemetry import TelemetryConfig, TelemetryEmitter
 
 logger = logging.getLogger(__name__)
 
 # Shared state for coordinating pre/post hooks of the same git push call
-_pending_pushes: Dict[str, Dict[str, Any]] = {}
+_pending_pushes: dict[str, dict[str, Any]] = {}
 _pending_lock = threading.Lock()
 
-_config: Dict[str, Any] = {}
+_config: dict[str, Any] = {}
 
 
-def set_config(config: Dict[str, Any]) -> None:
+def set_config(config: dict[str, Any]) -> None:
     global _config
     _config = config
     logger.debug(f"set_config called with keys: {list(config.keys())}")
 
 
-def get_config() -> Dict[str, Any]:
+def get_config() -> dict[str, Any]:
     return _config
 
 
@@ -50,19 +49,18 @@ def get_or_create_telemetry(run_id: str) -> TelemetryEmitter:
     return _shared_telemetry[run_id]
 
 
-_shared_telemetry: Dict[str, TelemetryEmitter] = {}
+_shared_telemetry: dict[str, TelemetryEmitter] = {}
 
 
 def clear_telemetry(run_id: str) -> None:
-    if run_id in _shared_telemetry:
-        del _shared_telemetry[run_id]
+    _shared_telemetry.pop(run_id, None)
 
 
 def _is_git_push(command: str) -> bool:
     return "git push" in command
 
 
-def _extract_repo_path(command: str, cwd: str) -> Optional[Path]:
+def _extract_repo_path(command: str, cwd: str) -> Path | None:
     cd_match = re.search(r'cd\s+([^\s&]+)\s*&&', command)
     if cd_match:
         path = cd_match.group(1)
@@ -78,7 +76,7 @@ def _extract_repo_path(command: str, cwd: str) -> Optional[Path]:
     return Path(".").resolve()
 
 
-def _parse_push_command(command: str, repo_path: Path) -> Dict[str, Any]:
+def _parse_push_command(command: str, repo_path: Path) -> dict[str, Any]:
     parts = command.strip().split()
     push_idx = -1
     for i, part in enumerate(parts):
@@ -122,7 +120,7 @@ def _make_push_key(task_id: str, session_id: str, tool_call_id: str) -> str:
     return f"{owner}:{tool_call_id}"
 
 
-def _run_pre_hooks_async(run_id: str, repo_path: Path, push_context: Dict[str, Any]) -> tuple:
+def _run_pre_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, Any]) -> tuple:
     """Run pre-push hooks in async context."""
     config = get_config()
     hook_mapping = config.get("hook_mapping", {})
@@ -157,7 +155,7 @@ def _run_pre_hooks_async(run_id: str, repo_path: Path, push_context: Dict[str, A
         loop.close()
 
 
-def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: Dict[str, Any]) -> Dict[str, list]:
+def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, Any]) -> dict[str, list]:
     """Run post-push hooks in async context."""
     config = get_config()
     hook_mapping = config.get("hook_mapping", {})
@@ -186,8 +184,8 @@ def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: Dict[str, 
         loop.close()
 
 
-def _generate_report_async(run_id: str, hook_results_pre: Dict, hook_results_post: Dict,
-                           repo_path: Path, push_context: Dict, push_result: Dict, repo_state: Any) -> None:
+def _generate_report_async(run_id: str, hook_results_pre: dict, hook_results_post: dict,
+                           repo_path: Path, push_context: dict, push_result: dict, repo_state: Any) -> None:
     """Generate markdown report in async context."""
     telemetry = get_or_create_telemetry(run_id)
     config = get_config()
@@ -208,7 +206,7 @@ def _generate_report_async(run_id: str, hook_results_pre: Dict, hook_results_pos
 
 def git_push_pre_tool_call(
     tool_name: str = "",
-    args: Optional[Dict[str, Any]] = None,
+    args: dict[str, Any] | None = None,
     task_id: str = "",
     session_id: str = "",
     tool_call_id: str = "",
@@ -302,7 +300,7 @@ def git_push_pre_tool_call(
 
 def git_push_post_tool_call(
     tool_name: str = "",
-    args: Optional[Dict[str, Any]] = None,
+    args: dict[str, Any] | None = None,
     task_id: str = "",
     session_id: str = "",
     tool_call_id: str = "",

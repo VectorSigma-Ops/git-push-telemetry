@@ -1,22 +1,20 @@
 """Repository state snapshot for git-push-telemetry."""
 
 import subprocess
-import json
 from dataclasses import dataclass
-from typing import List, Optional
 from pathlib import Path
 
 
 @dataclass
 class RepoState:
     current_branch: str
-    branches_local: List[str]
-    branches_remote: List[str]
+    branches_local: list[str]
+    branches_remote: list[str]
     last_commit_sha: str
     last_commit_message: str
     last_commit_author: str
-    tags_local: List[str]
-    tags_remote: List[str]
+    tags_local: list[str]
+    tags_remote: list[str]
     remote_status: str  # UP_TO_DATE, AHEAD, BEHIND, DIVERGED
     unpushed_commits: int
     untracked_files: int
@@ -24,7 +22,7 @@ class RepoState:
     modified_files: int
 
 
-def run_git(repo_path: Path, args: List[str]) -> tuple[int, str, str]:
+def run_git(repo_path: Path, args: list[str]) -> tuple[int, str, str]:
     """Run git command in repo, return (exit_code, stdout, stderr)."""
     try:
         result = subprocess.run(

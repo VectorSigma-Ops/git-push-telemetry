@@ -1,0 +1,90 @@
+# Template: observability-config.yaml
+# Copy this file to your project root as observability-config.yaml
+# Adjust values for your service
+
+structured_logging:
+  format: json
+  level: info
+  required_fields:
+    - timestamp
+    - level
+    - service
+    - trace_id
+    - span_id
+  correlation_id_header: x-correlation-id
+  sampling:
+    enabled: false
+    rate: 0.1
+
+metrics:
+  provider: prometheus
+  port: 9090
+  path: /metrics
+  default_buckets:
+    - 0.005
+    - 0.01
+    - 0.025
+    - 0.05
+    - 0.1
+    - 0.25
+    - 0.5
+    - 1.0
+    - 2.5
+    - 5.0
+    - 10.0
+  required_metrics:
+    - http_requests_total
+    - http_request_duration_seconds
+    - active_connections
+    - process_cpu_seconds_total
+    - process_resident_memory_bytes
+  namespace: ""
+
+tracing:
+  provider: opentelemetry
+  sampler:
+    type: traceidratio
+    ratio: 0.1
+  exporter:
+    type: otlp
+    endpoint: http://localhost:4317
+    protocol: grpc
+  propagators:
+    - tracecontext
+    - baggage
+  resource:
+    service.name: "your-service-name"
+    service.version: "0.1.0"
+    deployment.environment: "development"
+
+health_checks:
+  liveness:
+    path: /health/live
+    interval_seconds: 30
+    timeout_seconds: 5
+  readiness:
+    path: /health/ready
+    interval_seconds: 10
+    timeout_seconds: 3
+    dependencies:
+      - database
+      - cache
+      - message_queue
+
+alerting:
+  enabled: false
+  rules:
+    - alert: HighErrorRate
+      expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High error rate on {{ $labels.service }}"
+    - alert: HighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High latency on {{ $labels.service }}"

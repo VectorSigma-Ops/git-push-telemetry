@@ -1,8 +1,10 @@
 import sys
+
 sys.path.insert(0, '/home/hermes/.hermes/plugins/git_push_telemetry')
 
-from git_push_telemetry.eval_hooks import evaluate_hooks
 from pathlib import Path
+
+from git_push_telemetry.eval_hooks import evaluate_hooks
 
 hook_mapping = {
     "sast-quality-gates": {
