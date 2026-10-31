@@ -1,0 +1,90 @@
+name: git_push_telemetry
+version: 1.0.0
+description: "Intercepts git push, evaluates hooks, emits OTLP telemetry, produces standardized markdown report."
+
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+
+config_schema:
+  enabled:
+    type: boolean
+    default: true
+  otlp_endpoint:
+    type: string
+    default: "http://localhost:4318/v1/traces"
+  otlp_headers:
+    type: object
+    default: {}
+  jsonl_log_path:
+    type: string
+    default: "~/.hermes/logs/git-push-telemetry.jsonl"
+  report_format:
+    type: string
+    default: "markdown"
+  hooks_timeout_seconds:
+    type: integer
+    default: 300
+  fail_on_hook_failure:
+    type: boolean
+    default: true
+  evaluate_skills:
+    type: array
+    items:
+      type: string
+    default:
+      - sast-quality-gates
+      - project-standards-skill-project-standards
+      - requirements-manager-skill
+      - capability-optimizer
+      - rate-limiter-skill-rate-limiter
+      - paid-model-guard
+      - quota-monitor
+      - observability
+  hook_mapping:
+    type: object
+    default:
+      sast-quality-gates:
+        pre_push:
+          - pre_push_security
+          - pre_push_full_gate
+        post_push:
+          - post_gate_fail
+      project-standards-skill-project-standards:
+        pre_push:
+          - validate-branch
+          - validate-commit
+          - validate-all-fix-auto
+        post_push:
+          - validate_lockfile
+      requirements-manager-skill:
+        pre_push:
+          - ensure_dependencies
+        post_push:
+          - validate_lockfile
+      capability-optimizer:
+        pre_push:
+          - daily_analysis
+          - code_review
+        post_push:
+          - daily_improvement
+      rate-limiter-skill-rate-limiter:
+        pre_push:
+          - check_limits
+        post_push:
+          - auto_improve
+      paid-model-guard:
+        pre_push:
+          - check_models
+        post_push:
+          - audit_catalog
+      quota-monitor:
+        pre_push:
+          - check_quotas
+        post_push:
+          - alert
+      observability:
+        pre_push:
+          - check_health
+        post_push:
+          - emit_metrics
