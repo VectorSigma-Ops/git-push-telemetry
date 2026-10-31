@@ -1,13 +1,11 @@
 """Hook evaluator for git-push-telemetry: runs pre/post hooks from participating skills."""
 
-import subprocess
 import os
-import sys
+import subprocess
 import time
-import json
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -19,7 +17,7 @@ class HookResult:
     exit_code: int
     stdout: str
     stderr: str
-    findings: Dict[str, Any]
+    findings: dict[str, Any]
     details: str
 
 
@@ -37,7 +35,7 @@ def get_hermes_python() -> str:
     return "/usr/bin/python3"
 
 
-def get_skill_path(skill_name: str) -> Optional[Path]:
+def get_skill_path(skill_name: str) -> Path | None:
     """Get skill directory path."""
     # Check standard locations
     base_paths = [
@@ -53,7 +51,7 @@ def get_skill_path(skill_name: str) -> Optional[Path]:
     return None
 
 
-def resolve_hook_command(skill: str, hook: str, repo_path: Path, is_tag_push: bool = False) -> Optional[List[str]]:
+def resolve_hook_command(skill: str, hook: str, repo_path: Path, is_tag_push: bool = False) -> list[str] | None:
     """Resolve a hook to an executable command."""
     hermes_python = get_hermes_python()
     
@@ -78,14 +76,16 @@ def resolve_hook_command(skill: str, hook: str, repo_path: Path, is_tag_push: bo
         if not skill_path:
             return None
         
+        hermes_python = get_hermes_python()
+        
         if hook == "validate-branch":
-            return ["hermes", "standards", "branch"]
+            return [hermes_python, "-m", "scripts.cli", "branch", "--target-path", str(repo_path)]
         elif hook == "validate-commit":
-            return ["hermes", "standards", "commit"]
+            return [hermes_python, "-m", "scripts.cli", "commit", "--target-path", str(repo_path)]
         elif hook == "validate-all-fix-auto":
-            return ["hermes", "standards", "validate", "--fix-auto", "--format", "text"]
+            return [hermes_python, "-m", "scripts.cli", "validate", "--fix-auto", "--format", "text", "--target-path", str(repo_path)]
         elif hook == "validate_lockfile":
-            return ["hermes", "standards", "validate", "--only", "requirements", "--format", "json"]
+            return [hermes_python, "-m", "scripts.cli", "validate-lockfile", "--format", "json", "--target-path", str(repo_path)]
     
     elif skill == "requirements-manager-skill":
         skill_path = get_skill_path(skill)
@@ -235,11 +235,16 @@ def run_hook(skill: str, hook: str, repo_path: Path, is_tag_push: bool = False, 
     if skill_path:
         env["PYTHONPATH"] = f"{skill_path}:{env.get('PYTHONPATH', '')}"
     
+    # For project-standards, run from skill directory to avoid module shadowing
+    cwd = repo_path
+    if skill == "project-standards-skill-project-standards" and skill_path:
+        cwd = skill_path
+    
     start = time.time()
     try:
         result = subprocess.run(
             cmd,
-            cwd=repo_path,
+            cwd=cwd,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -303,7 +308,7 @@ def run_hook(skill: str, hook: str, repo_path: Path, is_tag_push: bool = False, 
         )
 
 
-def evaluate_hooks(skill_hooks: Dict[str, Dict[str, List[str]]], repo_path: Path, is_tag_push: bool = False, timeout: int = 300, fail_fast: bool = True) -> Dict[str, List[HookResult]]:
+def evaluate_hooks(skill_hooks: dict[str, dict[str, list[str]]], repo_path: Path, is_tag_push: bool = False, timeout: int = 300, fail_fast: bool = True) -> dict[str, list[HookResult]]:
     """Evaluate all hooks for pre-push or post-push phase."""
     results = {}
     
@@ -321,7 +326,7 @@ def evaluate_hooks(skill_hooks: Dict[str, Dict[str, List[str]]], repo_path: Path
     return results
 
 
-def format_hook_results(results: Dict[str, List[HookResult]], phase: str) -> dict:
+def format_hook_results(results: dict[str, list[HookResult]], phase: str) -> dict:
     """Format hook results for report template."""
     all_results = []
     for skill_results in results.values():
