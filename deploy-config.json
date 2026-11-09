@@ -1,0 +1,61 @@
+{
+  "targets": [
+    {
+      "name": "hermes-prod-1",
+      "type": "ssh",
+      "host": "hermes-prod-1.example.com",
+      "user": "hermes",
+      "port": 22,
+      "key_path": "",
+      "working_dir": "/home/hermes/git-push-telemetry",
+      "docker_image": "",
+      "docker_container": "",
+      "k8s_namespace": "default",
+      "k8s_deployment": "",
+      "health_check_url": "http://localhost:8080/health",
+      "health_check_timeout": 30,
+      "pre_deploy_cmd": "",
+      "post_deploy_cmd": "",
+      "env_vars": {}
+    },
+    {
+      "name": "hermes-staging",
+      "type": "docker",
+      "host": "",
+      "user": "hermes",
+      "port": 22,
+      "key_path": "",
+      "working_dir": "/home/hermes/git-push-telemetry",
+      "docker_image": "ghcr.io/vectorsigma-ops/git-push-telemetry:latest",
+      "docker_container": "hermes-gpt",
+      "k8s_namespace": "default",
+      "k8s_deployment": "",
+      "health_check_url": "http://localhost:8080/health",
+      "health_check_timeout": 30,
+      "pre_deploy_cmd": "",
+      "post_deploy_cmd": "",
+      "env_vars": {}
+    },
+    {
+      "name": "hermes-k8s",
+      "type": "kubernetes",
+      "host": "",
+      "user": "hermes",
+      "port": 22,
+      "key_path": "",
+      "working_dir": "/home/hermes/git-push-telemetry",
+      "docker_image": "",
+      "docker_container": "",
+      "k8s_namespace": "hermes",
+      "k8s_deployment": "git-push-telemetry",
+      "health_check_url": "http://git-push-telemetry.hermes.svc.cluster.local/health",
+      "health_check_timeout": 30,
+      "pre_deploy_cmd": "",
+      "post_deploy_cmd": "",
+      "env_vars": {}
+    }
+  ],
+  "parallel": true,
+  "rollback_on_failure": true,
+  "timeout": 300
+}

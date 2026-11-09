@@ -156,7 +156,7 @@ def _run_pre_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, A
 
 
 def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, Any]) -> dict[str, list]:
-    """Run post-push hooks in async context."""
+    """Run post-push hooks with timeout."""
     config = get_config()
     hook_mapping = config.get("hook_mapping", {})
     # Filter to only post_push hooks
@@ -164,9 +164,12 @@ def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, 
     telemetry = get_or_create_telemetry(run_id)
 
     async def _async_run():
-        with telemetry.span("post_hooks", {
-            "git.push.post_hooks.planned": sum(len(m.get("post_push", [])) for m in hook_mapping.values()),
-        }):
+        with telemetry.span(
+            "post_hooks",
+            {
+                "git.push.post_hooks.planned": sum(len(m.get("post_push", [])) for m in hook_mapping.values()),
+            },
+        ):
             hook_results = evaluate_hooks(
                 post_hooks,
                 repo_path,
@@ -179,27 +182,66 @@ def _run_post_hooks_async(run_id: str, repo_path: Path, push_context: dict[str, 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(_async_run())
+        # Add timeout wrapper for the entire post-hooks execution
+        timeout_seconds = config.get("hooks_timeout_seconds", 300)
+        return loop.run_until_complete(asyncio.wait_for(_async_run(), timeout=timeout_seconds))
+    except asyncio.TimeoutError:
+        logger.warning(f"Post-hooks timed out after {timeout_seconds}s for run_id={run_id}")
+        # Return timeout error for all planned post-hooks
+        config = get_config()
+        hook_mapping = config.get("hook_mapping", {})
+        post_hooks = {skill: {"post_push": hooks.get("post_push", [])} for skill, hooks in hook_mapping.items() if hooks.get("post_push")}
+        timeout_results = {}
+        for skill, hooks_dict in post_hooks.items():
+            for hook in hooks_dict.get("post_push", []):
+                timeout_results.setdefault(skill, []).append(
+                    HookResult(
+                        skill=skill,
+                        hook=hook,
+                        status="FAIL",
+                        duration_ms=0,
+                        exit_code=-1,
+                        stdout="",
+                        stderr=f"Post-hook timed out after {timeout_seconds}s",
+                        findings={},
+                        details=f"Timeout after {timeout_seconds}s"
+                    )
+                )
+        return timeout_results
+    except Exception as e:
+        logger.error(f"Post-hooks error for run_id={run_id}: {e}")
+        logger.error(traceback.format_exc())
+        return {"error": [HookResult("error", "error", "ERROR", 0, -1, "", str(e), {}, "Post-hooks exception")]}
     finally:
         loop.close()
 
-
 def _generate_report_async(run_id: str, hook_results_pre: dict, hook_results_post: dict,
                            repo_path: Path, push_context: dict, push_result: dict, repo_state: Any) -> None:
-    """Generate markdown report in async context."""
+    """Generate markdown report in async context with timeout."""
     telemetry = get_or_create_telemetry(run_id)
     config = get_config()
 
     async def _async_run():
-        await generate_report(
-            telemetry, hook_results_pre, hook_results_post,
-            repo_path, push_context, push_result, repo_state, config
-        )
+        with telemetry.span("generate_report"):
+            await generate_report(
+                telemetry, hook_results_pre, hook_results_post,
+                repo_path, push_context, push_result, repo_state, config
+            )
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_async_run())
+        # Add timeout wrapper for report generation
+        timeout_seconds = config.get("hooks_timeout_seconds", 300)
+        loop.run_until_complete(asyncio.wait_for(_async_run(), timeout=timeout_seconds))
+        logger.debug(f"Report generated successfully for run_id={run_id}")
+    except asyncio.TimeoutError:
+        logger.error(f"Report generation timed out after {timeout_seconds}s for run_id={run_id}")
+        raise
+    except Exception as e:
+        logger.error(f"Report generation error for run_id={run_id}: {e}")
+        logger.error(traceback.format_exc())
+        raise
     finally:
         loop.close()
 
@@ -252,8 +294,8 @@ def git_push_pre_tool_call(
         try:
             hook_results_pre, block_push = _run_pre_hooks_async(run_id, repo_path, push_context)
         except Exception as e:
-            logger.debug(f"Pre-hooks error: {e}")
-            logger.debug(traceback.format_exc())
+            logger.error(f"Pre-hooks error: {e}")
+            logger.error(traceback.format_exc())
             hook_results_pre = {"error": [HookResult("error", "error", "ERROR", 0, -1, "", str(e), {}, "Pre-hooks exception")]}
             block_push = True
 
@@ -262,7 +304,7 @@ def git_push_pre_tool_call(
     pre_thread.join(timeout=config.get("hooks_timeout_seconds", 300))
 
     if pre_thread.is_alive():
-        logger.debug("Pre-hooks timed out!")
+        logger.warning("Pre-hooks timed out!")
         hook_results_pre = {"timeout": [HookResult("timeout", "timeout", "FAIL", 0, -1, "", "Pre-hooks timeout", {}, "Pre-hooks timed out")]}
         block_push = True
 
@@ -352,6 +394,8 @@ def git_push_post_tool_call(
 
     # Run post-hooks
     hook_results_post = _run_post_hooks_async(run_id, repo_path, push_context)
+    telemetry = get_or_create_telemetry(run_id)
+    telemetry.event("post_hooks.end", {"hooks_run": sum(len(v) for v in hook_results_post.values())})
 
     # Capture repo state
     with get_or_create_telemetry(run_id).span("state_snapshot"):
@@ -362,9 +406,11 @@ def git_push_post_tool_call(
     try:
         _generate_report_async(run_id, hook_results_pre, hook_results_post,
                               repo_path, push_context, push_result, repo_state, config)
+        telemetry.event("report.generated", {"run_id": run_id})
     except Exception as e:
-        logger.debug("Report generation error: %s", e)
-        logger.debug(traceback.format_exc())
+        logger.error("Report generation error: %s", e)
+        logger.error(traceback.format_exc())
+        telemetry.event("report.failed", {"run_id": run_id, "error": str(e)})
 
     clear_telemetry(run_id)
     logger.debug(f"post_tool_call: completed, run_id={run_id}")

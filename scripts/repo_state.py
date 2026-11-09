@@ -1,6 +1,6 @@
 """Repository state snapshot for git-push-telemetry."""
 
-import subprocess
+import subprocess  # nosec B404 # standard library: subprocess import required
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +15,7 @@ class RepoState:
     last_commit_author: str
     tags_local: list[str]
     tags_remote: list[str]
-    remote_status: str  # UP_TO_DATE, AHEAD, BEHIND, DIVERGED
+    remote_status: str
     unpushed_commits: int
     untracked_files: int
     staged_files: int
@@ -26,99 +26,74 @@ def run_git(repo_path: Path, args: list[str]) -> tuple[int, str, str]:
     """Run git command in repo, return (exit_code, stdout, stderr)."""
     try:
         result = subprocess.run(
-            ["git"] + args,
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=30
+            ["git"] + args, cwd=repo_path, capture_output=True, text=True, timeout=30
         )
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
+        return (result.returncode, result.stdout.strip(), result.stderr.strip())
     except subprocess.TimeoutExpired:
-        return -1, "", "timeout"
+        return (-1, "", "timeout")
     except Exception as e:
-        return -1, "", str(e)
+        return (-1, "", str(e))
 
 
 def get_repo_state(repo_path: Path) -> RepoState:
     """Capture complete repository state snapshot."""
-    # Current branch
     code, stdout, _ = run_git(repo_path, ["branch", "--show-current"])
     current_branch = stdout if code == 0 else "unknown"
-    
-    # Local branches
+
     code, stdout, _ = run_git(repo_path, ["branch", "--format=%(refname:short)"])
     branches_local = stdout.split("\n") if code == 0 and stdout else []
-    
-    # Remote branches
+
     code, stdout, _ = run_git(repo_path, ["branch", "-r", "--format=%(refname:short)"])
     branches_remote = stdout.split("\n") if code == 0 and stdout else []
-    
-    # Last commit
+
     code, stdout, _ = run_git(repo_path, ["log", "-1", "--format=%H|%s|%an"])
     if code == 0 and stdout:
-        parts = stdout.split("|", 2)
-        last_commit_sha = parts[0][:8]
-        last_commit_message = parts[1] if len(parts) > 1 else ""
-        last_commit_author = parts[2] if len(parts) > 2 else ""
+        parts = stdout.split("|")
+        last_commit_sha = parts[0] if len(parts) > 0 else "unknown"
+        last_commit_message = parts[1] if len(parts) > 1 else "unknown"
+        last_commit_author = parts[2] if len(parts) > 2 else "unknown"
     else:
         last_commit_sha = "unknown"
-        last_commit_message = ""
-        last_commit_author = ""
-    
-    # Tags local
+        last_commit_message = "unknown"
+        last_commit_author = "unknown"
+
     code, stdout, _ = run_git(repo_path, ["tag", "--list"])
     tags_local = stdout.split("\n") if code == 0 and stdout else []
-    
-    # Tags remote
+
     code, stdout, _ = run_git(repo_path, ["ls-remote", "--tags", "origin"])
     tags_remote = []
     if code == 0 and stdout:
         for line in stdout.split("\n"):
-            if "refs/tags/" in line:
-                tag = line.split("refs/tags/")[-1]
-                if not tag.endswith("^{}"):
-                    tags_remote.append(tag)
-    
-    # Remote status
-    remote_status = "UNKNOWN"
-    unpushed_commits = 0
-    if current_branch != "unknown":
-        # Check upstream
-        code, stdout, _ = run_git(repo_path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-        if code == 0 and stdout:
-            upstream = stdout.strip()
-            # Count commits ahead/behind
-            code, stdout, _ = run_git(repo_path, ["rev-list", "--left-right", "--count", f"{upstream}...HEAD"])
-            if code == 0 and stdout:
-                behind, ahead = map(int, stdout.split())
-                if ahead > 0 and behind > 0:
-                    remote_status = "DIVERGED"
-                elif ahead > 0:
-                    remote_status = "AHEAD"
-                elif behind > 0:
-                    remote_status = "BEHIND"
-                else:
-                    remote_status = "UP_TO_DATE"
-                unpushed_commits = ahead
-            else:
-                remote_status = "UP_TO_DATE"
-        else:
-            remote_status = "NO_UPSTREAM"
-    
-    # Working tree status
+            if line:
+                parts = line.split("\t")
+                if len(parts) > 1:
+                    tags_remote.append(parts[1].replace("refs/tags/", ""))
+
     code, stdout, _ = run_git(repo_path, ["status", "--porcelain"])
     untracked = 0
     staged = 0
     modified = 0
     if code == 0 and stdout:
         for line in stdout.split("\n"):
-            if line.startswith("??"):
-                untracked += 1
-            elif line[0] != " ":
-                staged += 1
-            if line[1:2] == "M" or line[1:2] == "D":
-                modified += 1
-    
+            if line:
+                if line.startswith("??"):
+                    untracked += 1
+                elif line[0] in ("M", "A", "D", "R", "C"):
+                    staged += 1
+                if line[1:2] in ("M", "D"):
+                    modified += 1
+
+    # Remote status and unpushed commits
+    remote_status = "UNKNOWN"
+    unpushed_commits = 0
+    try:
+        code, stdout, _ = run_git(repo_path, ["rev-list", "--count", "@{u}..HEAD"])
+        if code == 0 and stdout:
+            unpushed_commits = int(stdout.strip())
+            remote_status = "AHEAD" if unpushed_commits > 0 else "UP_TO_DATE"
+    except Exception:
+        pass
+
     return RepoState(
         current_branch=current_branch,
         branches_local=branches_local,

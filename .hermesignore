@@ -1,0 +1,6 @@
+# Ignore all files for Hermes recovery/monitoring
+*
+*.py
+*.json
+*.yaml
+*.md

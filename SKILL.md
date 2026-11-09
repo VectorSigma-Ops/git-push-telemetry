@@ -69,18 +69,19 @@ The plugin in `~/.hermes/plugins/git_push_telemetry/` **loads correctly** and re
 ```python
 # In git_push_hooks.py
 def pre_tool_call(**ctx):
-    if ctx.get('tool_name') != 'terminal':
+    if ctx.get("tool_name") != "terminal":
         return
-    cmd = ctx.get('args', {}).get('command', '')
-    if 'git push' not in cmd:
+    cmd = ctx.get("args", {}).get("command", "")
+    if "git push" not in cmd:
         return
     # run pre-push hooks
 
+
 def post_tool_call(**ctx):
-    if ctx.get('tool_name') != 'terminal':
+    if ctx.get("tool_name") != "terminal":
         return
-    cmd = ctx.get('args', {}).get('command', '')
-    if 'git push' not in cmd:
+    cmd = ctx.get("args", {}).get("command", "")
+    if "git push" not in cmd:
         return
     # run post-push hooks, generate report
 ```
@@ -210,7 +211,9 @@ The plugin originally had incorrect imports (`git_push_telemetry.scripts.*`) ass
 **Fix**: Run the hook from the skill directory with explicit PYTHONPATH:
 ```python
 # In resolve_hook_command for project-standards-skill-project-standards:
-skill_path = get_skill_path(skill)  # /home/hermes/.hermes/skills/infrastructure/project-standards-skill-project-standards
+skill_path = get_skill_path(
+    skill
+)  # /home/hermes/.hermes/skills/infrastructure/project-standards-skill-project-standards
 cwd = skill_path  # Run from skill dir, not repo dir
 cmd = [hermes_python, "-m", "scripts.cli", "branch", "--target-path", str(repo_path)]
 ```

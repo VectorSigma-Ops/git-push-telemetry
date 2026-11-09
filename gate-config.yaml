@@ -1,0 +1,58 @@
+# Zero-Finding Gate Configuration
+# All thresholds set to 0 - any finding causes FAIL
+
+global:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_total: 0
+
+bandit:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+semgrep:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+pip_audit:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+ruff:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+pyright:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+radon:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0
+
+vulture:
+  max_critical: 0
+  max_high: 0
+  max_medium: 0
+  max_low: 0
+  max_findings: 0

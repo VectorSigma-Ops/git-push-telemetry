@@ -69,7 +69,19 @@ def resolve_hook_command(skill: str, hook: str, repo_path: Path, is_tag_push: bo
                 return None  # Skip for branch pushes
             return [hermes_python, "-m", "audit_gate.cli", "gate", ".", "--format", "text"]
         elif hook == "post_gate_fail":
-            return [hermes_python, "-m", "audit_gate.cli", "gate", ".", "--format", "text"]
+            # Quick test: verify remediation engine can run one iteration (full remediation runs via tool_executor)
+            return [
+                hermes_python,
+                "-c",
+                f"""import sys
+sys.path.insert(0, '/home/hermes/git-push-telemetry-repo/scripts')
+from remediation.engine import FixLoopConfig, RemediationEngine
+
+config = FixLoopConfig(max_iterations=1, confidence_threshold=0.7, timeout_seconds=120)
+engine = RemediationEngine(config, gate_config_path='gate-config.yaml')
+success = engine.run_remediation('{repo_path}')
+sys.exit(0 if success else 1)""",
+            ]
     
     elif skill == "project-standards-skill-project-standards":
         skill_path = get_skill_path(skill)

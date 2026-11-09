@@ -1,0 +1,2 @@
+# Disable LFS for this repo
+* -filter -diff -merge
