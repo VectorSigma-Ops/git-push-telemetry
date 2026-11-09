@@ -15,7 +15,9 @@ Usage:
     tracer = get_tracer(__name__)
     meter = get_meter(__name__)
 """
+
 import logging
+
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -25,12 +27,19 @@ from opentelemetry.propagators.baggage import BaggagePropagator
 from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION, Resource
+from opentelemetry.sdk.resources import (
+    DEPLOYMENT_ENVIRONMENT,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+    Resource,
+)
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
 try:
     from opentelemetry.instrumentation.requests import RequestsInstrumentor
     from opentelemetry.instrumentation.urllib import URLLibInstrumentor
+
     HAS_HTTP_INSTRUMENTATION = True
 except ImportError:
     HAS_HTTP_INSTRUMENTATION = False
@@ -38,7 +47,16 @@ _tracer_provider: TracerProvider | None = None
 _meter_provider: MeterProvider | None = None
 _initialized = False
 
-def init_observability(service_name: str, version: str='0.1.0', environment: str='development', otlp_endpoint: str='http://localhost:4317', log_level: int=logging.INFO, sampling_ratio: float=0.1, enable_http_instrumentation: bool=True) -> None:
+
+def init_observability(
+    service_name: str,
+    version: str = "0.1.0",
+    environment: str = "development",
+    otlp_endpoint: str = "http://localhost:4317",
+    log_level: int = logging.INFO,
+    sampling_ratio: float = 0.1,
+    enable_http_instrumentation: bool = True,
+) -> None:
     """
     Initialize OpenTelemetry observability.
 
@@ -54,8 +72,12 @@ def init_observability(service_name: str, version: str='0.1.0', environment: str
     global _tracer_provider, _meter_provider, _initialized
     if _initialized:
         return
-    resource = Resource.create({SERVICE_NAME: service_name, SERVICE_VERSION: version, DEPLOYMENT_ENVIRONMENT: environment})
-    _tracer_provider = TracerProvider(resource=resource, sampler=trace.TraceIdRatioBased(sampling_ratio))
+    resource = Resource.create(
+        {SERVICE_NAME: service_name, SERVICE_VERSION: version, DEPLOYMENT_ENVIRONMENT: environment}
+    )
+    _tracer_provider = TracerProvider(
+        resource=resource, sampler=trace.TraceIdRatioBased(sampling_ratio)
+    )
     span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
     _tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
     trace.set_tracer_provider(_tracer_provider)
@@ -65,26 +87,45 @@ def init_observability(service_name: str, version: str='0.1.0', environment: str
     metrics.set_meter_provider(_meter_provider)
     set_global_textmap(TraceContextTextMapPropagator())
     from opentelemetry.propagators.composite import CompositePropagator
+
     set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), BaggagePropagator()]))
     LoggingInstrumentor().instrument(set_logging_format=True)
     if enable_http_instrumentation and HAS_HTTP_INSTRUMENTATION:
         RequestsInstrumentor().instrument()
         URLLibInstrumentor().instrument()
-    logging.basicConfig(level=log_level, format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "%(name)s", "trace_id": "%(otelTraceID)s", "span_id": "%(otelSpanID)s", "message": "%(message)s"}', datefmt='%Y-%m-%dT%H:%M:%S%z')
+    logging.basicConfig(
+        level=log_level,
+        format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "%(name)s", "trace_id": "%(otelTraceID)s", "span_id": "%(otelSpanID)s", "message": "%(message)s"}',
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
     _initialized = True
-    logging.getLogger(__name__).info(f'Observability initialized for {service_name} v{version}')
+    logging.getLogger(__name__).info(f"Observability initialized for {service_name} v{version}")
+
 
 def get_tracer(name: str) -> trace.Tracer:
     """Get a tracer for the given name."""
     return trace.get_tracer_provider().get_tracer(name)
 
+
 def get_meter(name: str) -> metrics.Meter:
     """Get a meter for the given name."""
     return metrics.get_meter_provider().get_meter(name)
 
+
 def create_common_metrics(meter: metrics.Meter) -> dict:
     """Create common metrics for HTTP services."""
-    return {'http_requests_total': meter.create_counter('http_requests_total', description='Total number of HTTP requests', unit='1'), 'http_request_duration_seconds': meter.create_histogram('http_request_duration_seconds', description='HTTP request latency in seconds', unit='s'), 'active_connections': meter.create_up_down_counter('active_connections', description='Number of active connections', unit='1')}
+    return {
+        "http_requests_total": meter.create_counter(
+            "http_requests_total", description="Total number of HTTP requests", unit="1"
+        ),
+        "http_request_duration_seconds": meter.create_histogram(
+            "http_request_duration_seconds", description="HTTP request latency in seconds", unit="s"
+        ),
+        "active_connections": meter.create_up_down_counter(
+            "active_connections", description="Number of active connections", unit="1"
+        ),
+    }
+
 
 class HealthChecker:
     """Simple health check registry."""
@@ -92,15 +133,15 @@ class HealthChecker:
     def __init__(self):
         self._checks = {}
 
-    def register(self, name: str, check_fn, critical: bool=False):
+    def register(self, name: str, check_fn, critical: bool = False):
         """Register a health check function."""
-        self._checks[name] = {'fn': check_fn, 'critical': critical}
+        self._checks[name] = {"fn": check_fn, "critical": critical}
 
     def check_liveness(self) -> tuple[bool, dict]:
         """Liveness check - only critical checks."""
         results = {}
         healthy = True
-        for name, check in self._checks.items():
+        for _name, _check in self._checks.items():
             _check_1()
         return (healthy, results)
 
@@ -110,15 +151,21 @@ class HealthChecker:
         healthy = True
         for name, check in self._checks.items():
             try:
-                result = check['fn']()
-                results[name] = {'status': 'pass' if result else 'fail', 'critical': check['critical']}
+                result = check["fn"]()
+                results[name] = {
+                    "status": "pass" if result else "fail",
+                    "critical": check["critical"],
+                }
                 if not result:
                     healthy = False
             except Exception as e:
-                results[name] = {'status': 'fail', 'error': str(e), 'critical': check['critical']}
+                results[name] = {"status": "fail", "error": str(e), "critical": check["critical"]}
                 healthy = False
         return (healthy, results)
+
+
 health_checker = HealthChecker()
+
 
 def shutdown_observability() -> None:
     """Shutdown observability providers."""
@@ -128,8 +175,10 @@ def shutdown_observability() -> None:
     if _meter_provider:
         _meter_provider.shutdown()
     _initialized = False
-if __name__ == '__main__':
-    init_observability(service_name='example-service', version='1.0.0', environment='development')
+
+
+if __name__ == "__main__":
+    init_observability(service_name="example-service", version="1.0.0", environment="development")
     tracer = get_tracer(__name__)
     meter = get_meter(__name__)
     common_metrics = create_common_metrics(meter)
@@ -139,22 +188,23 @@ if __name__ == '__main__':
 
     def check_cache():
         return True
-    health_checker.register('database', check_db, critical=True)
-    health_checker.register('cache', check_cache, critical=False)
-    with tracer.start_as_current_span('example-operation') as span:
-        span.set_attribute('example.attribute', 'value')
-        common_metrics['http_requests_total'].add(1, {'method': 'GET', 'endpoint': '/health'})
+
+    health_checker.register("database", check_db, critical=True)
+    health_checker.register("cache", check_cache, critical=False)
+    with tracer.start_as_current_span("example-operation") as span:
+        span.set_attribute("example.attribute", "value")
+        common_metrics["http_requests_total"].add(1, {"method": "GET", "endpoint": "/health"})
         healthy, results = health_checker.check_readiness()
     shutdown_observability()
 
+
 def _check_1():
     """Extracted condition helper."""
-    if check['critical']:
+    if check["critical"]:
         try:
-            result = check['fn']()
-            results[name] = {'status': 'pass' if result else 'fail', 'critical': True}
+            result = check["fn"]()
+            results[name] = {"status": "pass" if result else "fail", "critical": True}
             if not result:
-                healthy = False
+                pass
         except Exception as e:
-            results[name] = {'status': 'fail', 'error': str(e), 'critical': True}
-            healthy = False
+            results[name] = {"status": "fail", "error": str(e), "critical": True}

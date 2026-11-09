@@ -41,7 +41,11 @@ class FastComplexityReducer:
 
     def should_extract_if(self, if_stmt: ast.If) -> bool:
         """Determine if an if statement should be extracted."""
-        return self._is_guard_clause(if_stmt) or self._is_complex_condition(if_stmt.test) or self._has_nested_ifs(if_stmt)
+        return (
+            self._is_guard_clause(if_stmt)
+            or self._is_complex_condition(if_stmt.test)
+            or self._has_nested_ifs(if_stmt)
+        )
 
     def should_extract_try(self, try_stmt: ast.Try) -> bool:
         """Determine if a try statement should be extracted."""
@@ -131,7 +135,11 @@ class FastComplexityReducer:
         if hasattr(ast, "unparse"):
             condition_code = ast.unparse(if_stmt.test)
             body_code = ast.unparse(ast.Module(body=if_stmt.body, type_ignores=[]))
-            orelse_code = ast.unparse(ast.Module(body=if_stmt.orelse, type_ignores=[])) if if_stmt.orelse else ""
+            orelse_code = (
+                ast.unparse(ast.Module(body=if_stmt.orelse, type_ignores=[]))
+                if if_stmt.orelse
+                else ""
+            )
         else:
             condition_code = ast.dump(if_stmt.test)
             body_code = str(if_stmt.body)
@@ -165,7 +173,9 @@ class FastComplexityReducer:
                 handlers_code.append(f"    except {exc_type}:\n{self._indent(handler_body, 8)}")
             else_lines = []
             if try_stmt.orelse:
-                else_lines = ast.unparse(ast.Module(body=try_stmt.orelse, type_ignores=[])).splitlines()
+                else_lines = ast.unparse(
+                    ast.Module(body=try_stmt.orelse, type_ignores=[])
+                ).splitlines()
             finally_lines = []
             if try_stmt.finalbody:
                 finally_lines = ast.unparse(

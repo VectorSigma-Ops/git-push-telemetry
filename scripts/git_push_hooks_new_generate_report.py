@@ -1,5 +1,12 @@
-def _generate_report_async(run_id: str, hook_results_pre: dict, hook_results_post: dict,
-                           repo_path: Path, push_context: dict, push_result: dict, repo_state: Any) -> None:
+def _generate_report_async(
+    run_id: str,
+    hook_results_pre: dict,
+    hook_results_post: dict,
+    repo_path: Path,
+    push_context: dict,
+    push_result: dict,
+    repo_state: Any,
+) -> None:
     """Generate markdown report in async context with timeout."""
     telemetry = get_or_create_telemetry(run_id)
     config = get_config()
@@ -7,8 +14,14 @@ def _generate_report_async(run_id: str, hook_results_pre: dict, hook_results_pos
     async def _async_run():
         with telemetry.span("generate_report"):
             await generate_report(
-                telemetry, hook_results_pre, hook_results_post,
-                repo_path, push_context, push_result, repo_state, config
+                telemetry,
+                hook_results_pre,
+                hook_results_post,
+                repo_path,
+                push_context,
+                push_result,
+                repo_state,
+                config,
             )
 
     loop = asyncio.new_event_loop()

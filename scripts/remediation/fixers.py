@@ -360,8 +360,6 @@ class RuffFixer(BaseFixer):
             "RUF029",
             "RUF030",
             "RUF031",
-            "RUF031",
-            "RUF032",
             "RUF032",
             "RUF033",
             "RUF034",

@@ -115,8 +115,12 @@ def format_repo_state(state: RepoState) -> dict:
     """Format RepoState for report template."""
     return {
         "state_current_branch": state.current_branch,
-        "state_branches_local": ", ".join(state.branches_local) if state.branches_local else "(none)",
-        "state_branches_remote": ", ".join(state.branches_remote) if state.branches_remote else "(none)",
+        "state_branches_local": ", ".join(state.branches_local)
+        if state.branches_local
+        else "(none)",
+        "state_branches_remote": ", ".join(state.branches_remote)
+        if state.branches_remote
+        else "(none)",
         "state_last_commit": f"{state.last_commit_sha} {state.last_commit_message}",
         "state_tags_local": ", ".join(state.tags_local) if state.tags_local else "(none)",
         "state_tags_remote": ", ".join(state.tags_remote) if state.tags_remote else "(none)",
