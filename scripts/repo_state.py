@@ -1,22 +1,20 @@
 """Repository state snapshot for git-push-telemetry."""
 
 import subprocess
-import json
 from dataclasses import dataclass
-from typing import List, Optional
 from pathlib import Path
 
 
 @dataclass
 class RepoState:
     current_branch: str
-    branches_local: List[str]
-    branches_remote: List[str]
+    branches_local: list[str]
+    branches_remote: list[str]
     last_commit_sha: str
     last_commit_message: str
     last_commit_author: str
-    tags_local: List[str]
-    tags_remote: List[str]
+    tags_local: list[str]
+    tags_remote: list[str]
     remote_status: str  # UP_TO_DATE, AHEAD, BEHIND, DIVERGED
     unpushed_commits: int
     untracked_files: int
@@ -24,15 +22,11 @@ class RepoState:
     modified_files: int
 
 
-def run_git(repo_path: Path, args: List[str]) -> tuple[int, str, str]:
+def run_git(repo_path: Path, args: list[str]) -> tuple[int, str, str]:
     """Run git command in repo, return (exit_code, stdout, stderr)."""
     try:
         result = subprocess.run(
-            ["git"] + args,
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=30
+            ["git"] + args, cwd=repo_path, capture_output=True, text=True, timeout=30
         )
         return result.returncode, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
@@ -46,15 +40,15 @@ def get_repo_state(repo_path: Path) -> RepoState:
     # Current branch
     code, stdout, _ = run_git(repo_path, ["branch", "--show-current"])
     current_branch = stdout if code == 0 else "unknown"
-    
+
     # Local branches
     code, stdout, _ = run_git(repo_path, ["branch", "--format=%(refname:short)"])
     branches_local = stdout.split("\n") if code == 0 and stdout else []
-    
+
     # Remote branches
     code, stdout, _ = run_git(repo_path, ["branch", "-r", "--format=%(refname:short)"])
     branches_remote = stdout.split("\n") if code == 0 and stdout else []
-    
+
     # Last commit
     code, stdout, _ = run_git(repo_path, ["log", "-1", "--format=%H|%s|%an"])
     if code == 0 and stdout:
@@ -66,11 +60,11 @@ def get_repo_state(repo_path: Path) -> RepoState:
         last_commit_sha = "unknown"
         last_commit_message = ""
         last_commit_author = ""
-    
+
     # Tags local
     code, stdout, _ = run_git(repo_path, ["tag", "--list"])
     tags_local = stdout.split("\n") if code == 0 and stdout else []
-    
+
     # Tags remote
     code, stdout, _ = run_git(repo_path, ["ls-remote", "--tags", "origin"])
     tags_remote = []
@@ -80,17 +74,21 @@ def get_repo_state(repo_path: Path) -> RepoState:
                 tag = line.split("refs/tags/")[-1]
                 if not tag.endswith("^{}"):
                     tags_remote.append(tag)
-    
+
     # Remote status
     remote_status = "UNKNOWN"
     unpushed_commits = 0
     if current_branch != "unknown":
         # Check upstream
-        code, stdout, _ = run_git(repo_path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        code, stdout, _ = run_git(
+            repo_path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]
+        )
         if code == 0 and stdout:
             upstream = stdout.strip()
             # Count commits ahead/behind
-            code, stdout, _ = run_git(repo_path, ["rev-list", "--left-right", "--count", f"{upstream}...HEAD"])
+            code, stdout, _ = run_git(
+                repo_path, ["rev-list", "--left-right", "--count", f"{upstream}...HEAD"]
+            )
             if code == 0 and stdout:
                 behind, ahead = map(int, stdout.split())
                 if ahead > 0 and behind > 0:
@@ -106,7 +104,7 @@ def get_repo_state(repo_path: Path) -> RepoState:
                 remote_status = "UP_TO_DATE"
         else:
             remote_status = "NO_UPSTREAM"
-    
+
     # Working tree status
     code, stdout, _ = run_git(repo_path, ["status", "--porcelain"])
     untracked = 0
@@ -120,7 +118,7 @@ def get_repo_state(repo_path: Path) -> RepoState:
                 staged += 1
             if line[1:2] == "M" or line[1:2] == "D":
                 modified += 1
-    
+
     return RepoState(
         current_branch=current_branch,
         branches_local=branches_local,
@@ -142,8 +140,12 @@ def format_repo_state(state: RepoState) -> dict:
     """Format RepoState for report template."""
     return {
         "state_current_branch": state.current_branch,
-        "state_branches_local": ", ".join(state.branches_local) if state.branches_local else "(none)",
-        "state_branches_remote": ", ".join(state.branches_remote) if state.branches_remote else "(none)",
+        "state_branches_local": ", ".join(state.branches_local)
+        if state.branches_local
+        else "(none)",
+        "state_branches_remote": ", ".join(state.branches_remote)
+        if state.branches_remote
+        else "(none)",
         "state_last_commit": f"{state.last_commit_sha} {state.last_commit_message}",
         "state_tags_local": ", ".join(state.tags_local) if state.tags_local else "(none)",
         "state_tags_remote": ", ".join(state.tags_remote) if state.tags_remote else "(none)",
