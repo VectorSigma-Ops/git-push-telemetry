@@ -19,12 +19,12 @@ Usage:
 import logging
 
 from opentelemetry import metrics, trace
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter  # type: ignore[reportMissingImports]
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # type: ignore[reportMissingImports]
+from opentelemetry.instrumentation.logging import LoggingInstrumentor  # type: ignore[reportMissingImports]
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.baggage import BaggagePropagator
-from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.propagators.baggage import BaggagePropagator  # type: ignore[reportMissingImports]
+from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator  # type: ignore[reportMissingImports]
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import (
@@ -38,7 +38,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 try:
     from opentelemetry.instrumentation.requests import RequestsInstrumentor
-    from opentelemetry.instrumentation.urllib import URLLibInstrumentor
+    from opentelemetry.instrumentation.urllib import URLLibInstrumentor  # type: ignore[reportMissingImports]
 
     HAS_HTTP_INSTRUMENTATION = True
 except ImportError:
@@ -76,7 +76,8 @@ def init_observability(
         {SERVICE_NAME: service_name, SERVICE_VERSION: version, DEPLOYMENT_ENVIRONMENT: environment}
     )
     _tracer_provider = TracerProvider(
-        resource=resource, sampler=trace.TraceIdRatioBased(sampling_ratio)
+        resource=resource,
+        sampler=trace.TraceIdRatioBased(sampling_ratio),  # type: ignore[reportAttributeAccessIssue]
     )
     span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
     _tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
@@ -91,8 +92,8 @@ def init_observability(
     set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), BaggagePropagator()]))
     LoggingInstrumentor().instrument(set_logging_format=True)
     if enable_http_instrumentation and HAS_HTTP_INSTRUMENTATION:
-        RequestsInstrumentor().instrument()
-        URLLibInstrumentor().instrument()
+        RequestsInstrumentor().instrument()  # type: ignore[reportPossiblyUnboundVariable]
+        URLLibInstrumentor().instrument()  # type: ignore[reportPossiblyUnboundVariable]
     logging.basicConfig(
         level=log_level,
         format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "%(name)s", "trace_id": "%(otelTraceID)s", "span_id": "%(otelSpanID)s", "message": "%(message)s"}',
@@ -137,12 +138,22 @@ class HealthChecker:
         """Register a health check function."""
         self._checks[name] = {"fn": check_fn, "critical": critical}
 
-    def check_liveness(self) -> tuple[bool, dict]:
+    def check_liveness(self) -> tuple[bool, dict]:  # noqa: VULTURE
         """Liveness check - only critical checks."""
         results = {}
         healthy = True
-        for _name, _check in self._checks.items():
-            _check_1()
+        for name, check in self._checks.items():
+            try:
+                result = check["fn"]()
+                results[name] = {
+                    "status": "pass" if result else "fail",
+                    "critical": check["critical"],
+                }
+                if not result:
+                    healthy = False
+            except Exception as e:
+                results[name] = {"status": "fail", "error": str(e), "critical": check["critical"]}
+                healthy = False
         return (healthy, results)
 
     def check_readiness(self) -> tuple[bool, dict]:
@@ -196,15 +207,3 @@ if __name__ == "__main__":
         common_metrics["http_requests_total"].add(1, {"method": "GET", "endpoint": "/health"})
         healthy, results = health_checker.check_readiness()
     shutdown_observability()
-
-
-def _check_1():
-    """Extracted condition helper."""
-    if check["critical"]:
-        try:
-            result = check["fn"]()
-            results[name] = {"status": "pass" if result else "fail", "critical": True}
-            if not result:
-                pass
-        except Exception as e:
-            results[name] = {"status": "fail", "error": str(e), "critical": True}

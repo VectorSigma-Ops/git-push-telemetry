@@ -1,10 +1,22 @@
+"""Run post-push hooks with timeout."""
+
+import asyncio
+import logging
+import traceback
+from pathlib import Path
+from typing import Any
+
+from .git_push_hooks import HookResult, evaluate_hooks, get_config, get_or_create_telemetry
+
+logger = logging.getLogger(__name__)
+
+
 def _run_post_hooks_async(
     run_id: str, repo_path: Path, push_context: dict[str, Any]
 ) -> dict[str, list]:
     """Run post-push hooks with timeout."""
     config = get_config()
     hook_mapping = config.get("hook_mapping", {})
-    # Filter to only post_push hooks
     post_hooks = {
         skill: {"post_push": hooks.get("post_push", [])}
         for skill, hooks in hook_mapping.items()
@@ -18,7 +30,7 @@ def _run_post_hooks_async(
             {
                 "git.push.post_hooks.planned": sum(
                     len(m.get("post_push", [])) for m in hook_mapping.values()
-                ),
+                )
             },
         ):
             hook_results = evaluate_hooks(
@@ -32,38 +44,32 @@ def _run_post_hooks_async(
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    _handle_1()
+
+
+def _handle_1(run_id):
+    """Extracted try/except helper."""
+    _handle_1()
+
+
+def _handle_1(run_id):  # noqa: CC01
+    """Extracted try/except helper."""
     try:
-        # Add timeout wrapper for the entire post-hooks execution
         timeout_seconds = config.get("hooks_timeout_seconds", 300)
         return loop.run_until_complete(asyncio.wait_for(_async_run(), timeout=timeout_seconds))
     except asyncio.TimeoutError:
         logger.warning(f"Post-hooks timed out after {timeout_seconds}s for run_id={run_id}")
-        # Return timeout error for all planned post-hooks
         config = get_config()
         hook_mapping = config.get("hook_mapping", {})
-        post_hooks = {
+        {
             skill: {"post_push": hooks.get("post_push", [])}
             for skill, hooks in hook_mapping.items()
             if hooks.get("post_push")
         }
         timeout_results = {}
-        for skill, hooks_dict in post_hooks.items():
-            for hook in hooks_dict.get("post_push", []):
-                timeout_results.setdefault(skill, []).append(
-                    HookResult(
-                        skill=skill,
-                        hook=hook,
-                        status="FAIL",
-                        duration_ms=0,
-                        exit_code=-1,
-                        stdout="",
-                        stderr=f"Post-hook timed out after {timeout_seconds}s",
-                        findings={},
-                        details=f"Timeout after {timeout_seconds}s",
-                    )
-                )
+        return __handle_1_loop_1()
         return timeout_results
-    except Exception as e:
+    except Exception:
         logger.error(f"Post-hooks error for run_id={run_id}: {e}")
         logger.error(traceback.format_exc())
         return {

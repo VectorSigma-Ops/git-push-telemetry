@@ -2,7 +2,6 @@
 
 import json
 import subprocess  # nosec B404 # standard library: subprocess import required
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,18 +30,25 @@ class RemediationEngine:
 
     def _init_fixers(self):
         """Initialize fixers for supported tools."""
+        # Standard tool fixers
         for tool in self.config.tools_with_fixers:
             fixer = get_fixer_for_tool(tool, self.config.confidence_threshold)
             if fixer:
                 self.fixers[tool] = fixer
 
+        # Add LLM fixer as fallback for any tool
+        llm_fixer = get_fixer_for_tool("llm", self.config.confidence_threshold)
+        if llm_fixer and llm_fixer.llm_client:
+            self.fixers["llm"] = llm_fixer
+
     def run_gate(self, repo_path: Path, tools: list[str] | None = None) -> tuple[bool, list[dict]]:
         """Run audit_gate and return (passed, findings)."""
         tool_list = ",".join(tools) if tools else "bandit,pyright,radon,vulture,pip_audit"
+        # Use audit_gate binary directly (installed in /home/hermes/.local/bin)
+        audit_gate_bin = "/home/hermes/.local/bin/audit_gate"
+        repo_path = Path(repo_path).resolve()
         cmd = [
-            sys.executable,
-            "-m",
-            "audit_gate.cli",
+            audit_gate_bin,
             "gate",
             str(repo_path),
             "--format",
@@ -51,7 +57,9 @@ class RemediationEngine:
             tool_list,
         ]
         if self.gate_config_path:
-            cmd.extend(["--config", self.gate_config_path])
+            # Use absolute path for config since audit_gate runs from repo root
+            config_path = (repo_path / self.gate_config_path).resolve()
+            cmd.extend(["--config", str(config_path)])
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=self.config.timeout_seconds
@@ -66,6 +74,11 @@ class RemediationEngine:
 
         Returns number of fixes applied.
         """
+        # Reset per-iteration state on fixers
+        for fixer in self.fixers.values():
+            if hasattr(fixer, "reset_iteration"):
+                fixer.reset_iteration()
+
         repo_path = Path(repo_path)
         fixes_applied = 0
         by_tool: dict[str, list[dict]] = {}
@@ -73,6 +86,8 @@ class RemediationEngine:
             tool = f.get("tool", "").lower()
             if tool in self.fixers:
                 by_tool.setdefault(tool, []).append(f)
+            elif "llm" in self.fixers:
+                by_tool.setdefault("llm", []).append(f)
         for tool, tool_findings in by_tool.items():
             fixer = self.fixers[tool]
             for finding in tool_findings[: self.config.max_fixes_per_iteration]:
@@ -114,7 +129,7 @@ class RemediationEngine:
         return passed
 
 
-def run_remediation_cli(
+def run_remediation_cli(  # noqa: VULTURE
     repo_path: str,
     max_iterations: int = 256,
     confidence: float = 0.7,

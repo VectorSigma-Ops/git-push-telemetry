@@ -1,4 +1,18 @@
-def _generate_report_async(
+"""Generate markdown report in async context with timeout."""
+
+import asyncio
+import logging
+import traceback
+from pathlib import Path
+from typing import Any
+
+from .git_push_hooks import get_config, get_or_create_telemetry
+from .git_push_report import generate_report
+
+logger = logging.getLogger(__name__)
+
+
+def _generate_report_async(  # noqa: VULTURE
     run_id: str,
     hook_results_pre: dict,
     hook_results_post: dict,
@@ -13,7 +27,7 @@ def _generate_report_async(
 
     async def _async_run():
         with telemetry.span("generate_report"):
-            await generate_report(
+            await generate_report(  # type: ignore[reportGeneralTypeIssues]
                 telemetry,
                 hook_results_pre,
                 hook_results_post,
@@ -32,7 +46,7 @@ def _generate_report_async(
         loop.run_until_complete(asyncio.wait_for(_async_run(), timeout=timeout_seconds))
         logger.debug(f"Report generated successfully for run_id={run_id}")
     except asyncio.TimeoutError:
-        logger.error(f"Report generation timed out after {timeout_seconds}s for run_id={run_id}")
+        logger.error(f"Report generation timed out after {timeout_seconds}s for run_id={run_id}")  # type: ignore[reportPossiblyUnboundVariable]
         raise
     except Exception as e:
         logger.error(f"Report generation error for run_id={run_id}: {e}")

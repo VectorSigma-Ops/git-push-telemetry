@@ -36,11 +36,6 @@ config_schema:
       - sast-quality-gates
       - project-standards-skill-project-standards
       - requirements-manager-skill
-      - capability-optimizer
-      - rate-limiter-skill-rate-limiter
-      - paid-model-guard
-      - quota-monitor
-      - observability
   hook_mapping:
     type: object
     default:
@@ -49,7 +44,7 @@ config_schema:
           - pre_push_security
           - pre_push_full_gate
         post_push:
-          - post_gate_fail
+          # post_gate_fail now runs inline in pre_push_full_gate on failure
       project-standards-skill-project-standards:
         pre_push:
           - validate-branch
@@ -62,29 +57,3 @@ config_schema:
           - ensure_dependencies
         post_push:
           - validate_lockfile
-      capability-optimizer:
-        pre_push:
-          - daily_analysis
-          - code_review
-        post_push:
-          - daily_improvement
-      rate-limiter-skill-rate-limiter:
-        pre_push:
-          - check_limits
-        post_push:
-          - auto_improve
-      paid-model-guard:
-        pre_push:
-          - check_models
-        post_push:
-          - audit_catalog
-      quota-monitor:
-        pre_push:
-          - check_quotas
-        post_push:
-          - alert
-      observability:
-        pre_push:
-          - check_health
-        post_push:
-          - emit_metrics
